@@ -1,6 +1,6 @@
 import os.path
 import torchvision.transforms as transforms
-from data.base_dataset import BaseDataset, get_transform
+from data.base_dataset import BaseDataset, get_transform, get_transform1
 from data.image_folder import make_dataset
 from PIL import Image
 import PIL
@@ -21,6 +21,8 @@ class KeyDataset(BaseDataset):
 
         self.init_categories(opt.pairLst)
         self.transform = get_transform(opt)
+        self.transformBP = get_transform1(opt, 2)
+        self.transformSP1 = get_transform1(opt, 0)
 
     def init_categories(self, pairLst):
         pairs_file_train = pd.read_csv(pairLst)
@@ -86,6 +88,8 @@ class KeyDataset(BaseDataset):
 
             P1 = self.transform(P1_img)
             P2 = self.transform(P2_img)
+        BP1 = 4*self.transformBP(BP1)
+        BP2 = 4*self.transformBP(BP2)
 
         # segmentation
         SP1_name = self.split_name(P1_name, 'semantic_merge3')
@@ -95,6 +99,12 @@ class KeyDataset(BaseDataset):
         SP1 = np.zeros((self.SP_input_nc, 256, 176), dtype='float32')
         for id in range(self.SP_input_nc):
             SP1[id] = (SP1_data == id).astype('float32')
+
+        SP1 = torch.from_numpy(SP1).float()
+        SP1 = self.transformSP1(SP1)
+
+        # print("Input dimensions ", P1.shape, P2.shape, BP1.shape, BP2.shape,
+        #     SP1.shape)
 
         return {'P1': P1, 'BP1': BP1, 'SP1': SP1, 'P2': P2, 'BP2': BP2,
                 'P1_path': P1_name, 'P2_path': P2_name}

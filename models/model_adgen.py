@@ -8,6 +8,8 @@ from .vgg import VGG
 import os
 import torchvision.models.vgg as models
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 # Moddfied with AdINGen
 class ADGen(nn.Module):
     # AdaIN auto-encoder architecture
@@ -32,14 +34,18 @@ class ADGen(nn.Module):
 
     def forward(self, img_A, img_B, sem_B):
         # reconstruct an image
-
+        # print("Input ", torch.min(img_A), torch.max(img_A))
         content = self.enc_content(img_A)
+        # print("Content  ", torch.min(content), torch.max(content))
         style = self.enc_style(img_B, sem_B)
+        # print("Style1 ", torch.min(style), torch.max(style))
         style = self.fc(style.view(style.size(0), -1))
+        # print("Style2 ", torch.min(style), torch.max(style))
         style = torch.unsqueeze(style, 2)
         style = torch.unsqueeze(style, 3)
 
         images_recon = self.decode(content, style)
+        # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         return images_recon
 
     def decode(self, content, style):
@@ -75,7 +81,7 @@ class VggStyleEncoder(nn.Module):
         super(VggStyleEncoder, self).__init__()
         # self.vgg = models.vgg19(pretrained=True).features
         vgg19 = models.vgg19(pretrained=False)
-        vgg19.load_state_dict(torch.load('/home1/menyf/data/deepfashion/vgg19-dcbb9e9d.pth'))
+        vgg19.load_state_dict(torch.load('/nitthilan/data/ADGAN/data/vgg19-dcbb9e9d.pth'))
         self.vgg = vgg19.features
 
         for param in self.vgg.parameters():

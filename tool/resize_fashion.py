@@ -43,12 +43,12 @@ def resize_annotations(name, new_name, new_size = (256, 176), old_size = (256, 2
     df.to_csv(new_name, sep=':', index=False)
 
 
-root_dir = '/data00/home/menyifang/code/datasets/fashion_data'
+root_dir = '/nitthilan/data/ADGAN/data/images'
 
 resize_dataset(root_dir + '/test', root_dir + '/fashion_resize/test')
 # resize_annotations(root_dir + 'fasion-annotation-test.csv', root_dir + 'fasion-resize-annotation-test.csv')
 
 resize_dataset(root_dir + '/train', root_dir + '/fashion_resize/train')
-# resize_annotations(root_dir + 'fasion-annotation-train.csv', root_dir + 'fasion-resize-annotation-train.csv')
+resize_annotations(root_dir + 'fasion-annotation-train.csv', root_dir + 'fasion-resize-annotation-train.csv')
 
 

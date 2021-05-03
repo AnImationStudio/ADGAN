@@ -33,7 +33,22 @@ def get_transform(opt):
                                             (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
+def get_transform1(opt, interpolation):
+    transform_list = []
+    if opt.resize_or_crop == 'scale_width':
+        # interpolation = [Image.NEAREST, Image.BILINEAR, Image.BICUBIC][1]
+        transform_list.append(transforms.Resize(opt.fineSize, 
+            interpolation = interpolation))
+    elif opt.resize_or_crop == 'scale_width_and_crop':
+        transform_list.append(transforms.Lambda(
+            lambda img: __scale_width(img, opt.loadSize)))
+        transform_list.append(transforms.RandomCrop(opt.fineSize))
+
+    return transforms.Compose(transform_list)
+
+
 def __scale_width(img, target_width):
+    # print("Size ", img.shape)
     ow, oh = img.size
     if (ow == target_width):
         return img

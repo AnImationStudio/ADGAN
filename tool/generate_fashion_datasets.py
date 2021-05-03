@@ -1,7 +1,7 @@
 import os
 
 # path for downloaded fashion images
-root_fashion_dir = 'your_path/deepfashion'
+root_fashion_dir = '/nitthilan/data/ADGAN/data/images'
 assert len(root_fashion_dir) > 0, 'please give the path of raw deep fashion dataset!'
 
 train_images = []

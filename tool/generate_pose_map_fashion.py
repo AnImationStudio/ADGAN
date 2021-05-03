@@ -5,8 +5,8 @@ import os
 
 MISSING_VALUE = -1
 # fix PATH
-img_dir = 'your_path/deepfashion/fashion_resize'
-annotations_file = os.path.join(img_dir, 'fashion-resize-annotation-train.csv') #pose annotation path
+img_dir = '/nitthilan/data/ADGAN/data/images/fashion_resize/'
+annotations_file = os.path.join(img_dir, 'fasion-resize-annotation-test.csv') #pose annotation path
 save_path = os.path.join(img_dir, 'trainK')
 if not os.path.exists(save_path):
     os.makedirs(save_path)

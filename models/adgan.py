@@ -89,7 +89,7 @@ class TransferModel(BaseModel):
                 if torch.cuda.is_available():
                     self.CX_loss.cuda()
                 self.vgg = VGG()
-                self.vgg.load_state_dict(torch.load(os.path.abspath(os.path.dirname(opt.dataroot)) + '/vgg_conv.pth'))
+                self.vgg.load_state_dict(torch.load('/nitthilan/data/ADGAN/data/vgg_conv.pth'))
                 for param in self.vgg.parameters():
                     param.requires_grad = False
                 if torch.cuda.is_available():
@@ -150,6 +150,18 @@ class TransferModel(BaseModel):
         self.input_SP1 = Variable(self.input_SP1_set)
 
         self.fake_p2 = self.netG(self.input_BP2, self.input_P1, self.input_SP1)
+        # print("Check ",self.fake_p2.shape,
+        #     # torch.min(self.input_P1), torch.max(self.input_P1),
+        #     # torch.min(self.input_SP1), torch.max(self.input_SP1),
+        #     # torch.min(self.input_BP2), torch.max(self.input_BP2),
+        #     torch.min(self.fake_p2), torch.max(self.fake_p2))
+        # print("DAta ", self.fake_p2[:2,:2,:2, :2], 
+        #     self.input_P1[:2,:2,:2, :2], self.input_SP1[:2,:2,:2, :2], 
+        #     self.input_BP2[:2,:2,:2, :2])
+
+        # for name, param in self.netG.module.enc_content.model.named_parameters():
+        #     if param.requires_grad:
+        #         print("Parameters ", name, param.data)
 
 
 
@@ -194,6 +206,7 @@ class TransferModel(BaseModel):
             cx_style_loss *= self.opt.lambda_cx
 
         pair_cxloss = cx_style_loss
+        # pair_cxloss = torch.clamp(pair_cxloss, min=0, max=0.7)
 
         # L1 loss
         if self.opt.L1_type == 'l1_plus_perL1' :
@@ -204,6 +217,7 @@ class TransferModel(BaseModel):
 
         else:
             self.loss_G_L1 = self.criterionL1(self.fake_p2, self.input_P2) * self.opt.lambda_A
+        # self.loss_G_L1 = torch.clamp(self.loss_G_L1, min=0, max=1.0)
 
         pair_L1loss = self.loss_G_L1
 
@@ -215,15 +229,17 @@ class TransferModel(BaseModel):
         else:
             if self.opt.with_D_PP:
                 pair_GANloss = self.loss_G_GAN_PP * self.opt.lambda_GAN
-
+        # pair_GANloss = torch.clamp(pair_GANloss, min=0, max=2.0)
 
         if self.opt.with_D_PB or self.opt.with_D_PP:
-            pair_loss = pair_L1loss + pair_GANloss
+            pair_loss = pair_GANloss + pair_L1loss 
         else:
             pair_loss = pair_L1loss
 
         if self.opt.use_cxloss:
             pair_loss = pair_loss + pair_cxloss
+
+        # pair_loss = 0
 
         pair_loss.backward()
 
@@ -246,6 +262,7 @@ class TransferModel(BaseModel):
         loss_D = (loss_D_real + loss_D_fake) * 0.5
         # backward
         loss_D.backward()
+        # loss_D = torch.clamp(loss_D, min=0, max=2.0)
         return loss_D
 
     # D: take(P, B) as input
@@ -273,21 +290,31 @@ class TransferModel(BaseModel):
 
         self.optimizer_G.zero_grad()
         self.backward_G()
+        # t = self.netG.module.enc_content.model[0].conv.weight
+        # print("Before optimizer_G ", (t != t).any())
         self.optimizer_G.step()
+        # print("After optimizer_G ", (t != t).any())
 
         # D_P
         if self.opt.with_D_PP:
             for i in range(self.opt.DG_ratio):
                 self.optimizer_D_PP.zero_grad()
                 self.backward_D_PP()
+                # print("Before optimizer_D_PP ", (t != t).any())
                 self.optimizer_D_PP.step()
+                # print("After optimizer_D_PP ", (t != t).any())
 
         # D_BP
         if self.opt.with_D_PB:
             for i in range(self.opt.DG_ratio):
                 self.optimizer_D_PB.zero_grad()
                 self.backward_D_PB()
+                # print("Before optimizer_D_PB ", (t != t).any())
                 self.optimizer_D_PB.step()
+                # print("After optimizer_D_PB ", (t != t).any())
+
+        # print("Errors ", self.pair_L1loss, self.pair_GANloss, self.loss_D_PP,
+        #     self.loss_D_PB, self.loss_originL1, self.loss_perceptual, self.pair_cxloss)
 
     def get_current_errors(self):
         ret_errors = OrderedDict([ ('pair_L1loss', self.pair_L1loss)])

@@ -95,6 +95,15 @@ class TransferModel(BaseModel):
                 if torch.cuda.is_available():
                     self.vgg.cuda()
 
+            for p in self.netG.parameters():
+                if(p.requires_grad):
+                    p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
+            for p in self.netD_PB.parameters():
+                if(p.requires_grad):
+                    p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
+            for p in self.netD_PP.parameters():
+                if(p.requires_grad):
+                    p.register_hook(lambda grad: torch.clamp(grad, -1, 1))
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(filter(lambda p: p.requires_grad, self.netG.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
 
@@ -150,11 +159,15 @@ class TransferModel(BaseModel):
         self.input_SP1 = Variable(self.input_SP1_set)
 
         self.fake_p2 = self.netG(self.input_BP2, self.input_P1, self.input_SP1)
+        # print("Shape ",self.fake_p2.shape, self.input_P1.shape,  self.input_SP1.shape,
+        #     self.input_BP2.shape, self.fake_p2.shape
+        #     )
         # print("Check ",self.fake_p2.shape,
         #     # torch.min(self.input_P1), torch.max(self.input_P1),
         #     # torch.min(self.input_SP1), torch.max(self.input_SP1),
-        #     # torch.min(self.input_BP2), torch.max(self.input_BP2),
-        #     torch.min(self.fake_p2), torch.max(self.fake_p2))
+        #     torch.min(self.input_BP2), torch.max(self.input_BP2),
+        #     torch.min(self.fake_p2), torch.max(self.fake_p2)
+        #     )
         # print("DAta ", self.fake_p2[:2,:2,:2, :2], 
         #     self.input_P1[:2,:2,:2, :2], self.input_SP1[:2,:2,:2, :2], 
         #     self.input_BP2[:2,:2,:2, :2])
@@ -241,7 +254,61 @@ class TransferModel(BaseModel):
 
         # pair_loss = 0
 
+        # for name, param in self.netG.module.enc_content.model.named_parameters():
+        #     if param.requires_grad:
+        #         # print("Parameters ", name, param.data)
+        #         t = param.grad
+        #         print("Shape of grad ", t)                
+        #         # if((t != t)):
+        #         #     print("Before Grads ", name, param.grad)
+
         pair_loss.backward()
+
+        exit_now = False
+        for name, param in self.netG.module.named_parameters():
+            if param.requires_grad:
+                # print("Parameters ", name, param.data)
+                t = param.grad
+                # print("Shape of grad ", t)
+                check = (t != t)
+                if(check.any()):
+                    print("After Grads ", name, param.grad)
+                    exit_now = True
+        # for name, param in self.netG.module.dec.model.named_parameters():
+        #     if param.requires_grad:
+        #         # print("Parameters ", name, param.data)
+        #         t = param.grad
+        #         # print("Shape of grad ", t)
+        #         check = (t != t)
+        #         if(check.any()):
+        #             print("After dec Grads ", name, param.grad)
+        #             # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
+        #             #     self.netG.module.enc_content.model[0].norm.running_var)
+        #             exit_now = True
+        # for name, param in self.netG.module.enc_style.named_parameters():
+        #     if param.requires_grad:
+        #         # print("Parameters ", name, param.data)
+        #         t = param.grad
+        #         # print("Shape of grad ", t)
+        #         check = (t != t)
+        #         if(check.any()):
+        #             print("After enc_style Grads ", name, param.grad)
+        #             # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
+        #             #     self.netG.module.enc_content.model[0].norm.running_var)
+        #             exit_now = True
+        for name, param in self.netG.module.named_parameters():
+            if param.requires_grad:
+                t = param.data
+                # print("Shape of grad ", t)
+                check = (t != t)
+                if(check.any()):
+                    print("After data ", name, param.data)
+                    # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
+                    #     self.netG.module.enc_content.model[0].norm.running_var)
+                    exit_now = True
+
+        if(exit_now):
+            exit(-1)
 
         self.pair_L1loss = pair_L1loss.data
         if self.opt.with_D_PB or self.opt.with_D_PP:
@@ -290,6 +357,16 @@ class TransferModel(BaseModel):
 
         self.optimizer_G.zero_grad()
         self.backward_G()
+        # print(dir(self.netG.module.enc_content.model[0].conv))
+        # torch.nn.utils.clip_grad_norm_(self.netG, 10.0)
+        # print(self.netG.module.enc_content.model[0].conv.weight.grad[:2,:2,:2])
+
+
+        # for name, param in self.netG.module.enc_content.model.named_parameters():
+        #     if param.requires_grad:
+        #         # print("Parameters ", name, param.data)
+        #         print("Grads ", name, param.grad)
+
         # t = self.netG.module.enc_content.model[0].conv.weight
         # print("Before optimizer_G ", (t != t).any())
         self.optimizer_G.step()

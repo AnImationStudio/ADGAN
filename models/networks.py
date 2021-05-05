@@ -147,6 +147,7 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         style_dim = 512
         n_res =8
         mlp_dim = 256
+        print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
         netG = ADGen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
     elif which_model_netG == 'AdaGen_SS_mix':
         style_dim = 512

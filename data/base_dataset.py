@@ -46,6 +46,15 @@ def get_transform1(opt, interpolation):
 
     return transforms.Compose(transform_list)
 
+def get_transformBP(opt):
+    transform_list = []
+    transform_list.append(transforms.Resize(opt.fineSize, 
+            interpolation = 2))
+    transform_list.append(transforms.Normalize((0.5, 0.5, 0.5),
+                                            (0.5, 0.5, 0.5)))
+    return transforms.Compose(transform_list)
+    
+
 
 def __scale_width(img, target_width):
     # print("Size ", img.shape)

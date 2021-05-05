@@ -23,7 +23,7 @@ class ADGen(nn.Module):
 
         # content encoder
         input_dim = 18
-        self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'in', activ, pad_type=pad_type)
+        self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'bn', activ, pad_type=pad_type)
         input_dim = 3
         self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
 
@@ -51,6 +51,8 @@ class ADGen(nn.Module):
     def decode(self, content, style):
         # decode content and style codes to an image
         adain_params = self.mlp(style)
+        # print("Style value for adain ", adain_params.shape,
+        #     style.shape)
 
         self.assign_adain_params(adain_params, self.dec)
         images = self.dec(content)
@@ -340,7 +342,7 @@ class LinearBlock(nn.Module):
 # Normalization layers
 ##################################################################################
 class AdaptiveInstanceNorm2d(nn.Module):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+    def __init__(self, num_features, eps=1e-3, momentum=0.1):
         super(AdaptiveInstanceNorm2d, self).__init__()
         self.num_features = num_features
         self.eps = eps
@@ -360,6 +362,8 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
         # Apply instance norm
         x_reshaped = x.contiguous().view(1, b * c, *x.size()[2:])
+
+        # print("Weight values ", self.weight, self.bias)
 
         out = F.batch_norm(
             x_reshaped, running_mean, running_var, self.weight, self.bias,

@@ -48,12 +48,12 @@ class KeyDataset(BaseDataset):
             P1_name, P2_name = self.pairs[index]
             P1_path = os.path.join(self.dir_P, P1_name) # person 1
             BP1_path = os.path.join(self.dir_DP, P1_name[:-4] + '.npz') # bone of person 1
-            BP1_path = os.path.join(self.dir_K, P1_name + '.npy') # bone of person 1
+            # BP1_path = os.path.join(self.dir_K, P1_name + '.npy') # bone of person 1
 
             # person 2 and its bone
             P2_path = os.path.join(self.dir_P, P2_name) # person 2
             BP2_path = os.path.join(self.dir_DP, P2_name[:-4] + '.npz') # bone of person 2
-            BP2_path = os.path.join(self.dir_K, P2_name + '.npy') # bone of person 2
+            # BP2_path = os.path.join(self.dir_K, P2_name + '.npy') # bone of person 2
 
             if(os.path.exists(BP1_path) and os.path.exists(BP2_path)):
                 break
@@ -62,10 +62,10 @@ class KeyDataset(BaseDataset):
         P1_img = Image.open(P1_path).convert('RGB')
         P2_img = Image.open(P2_path).convert('RGB')
 
-        # BP1_img = np.load(BP1_path)['arr_0'] # h, w, c
-        # BP2_img = np.load(BP2_path)['arr_0'] 
-        BP1_img = np.load(BP1_path) # h, w, c
-        BP2_img = np.load(BP2_path)
+        BP1_img = np.load(BP1_path)['arr_0'] # h, w, c
+        BP2_img = np.load(BP2_path)['arr_0'] 
+        # BP1_img = np.load(BP1_path) # h, w, c
+        # BP2_img = np.load(BP2_path)
 
         # use flip
         if self.opt.phase == 'train' and self.opt.use_flip:
@@ -105,8 +105,8 @@ class KeyDataset(BaseDataset):
 
             P1 = self.transform(P1_img)
             P2 = self.transform(P2_img)
-        BP1 = 4*self.transformBP(BP1)
-        BP2 = 4*self.transformBP(BP2)
+        BP1 = self.transformBP(BP1)
+        BP2 = self.transformBP(BP2)
 
         # print(BP1.shape)
         # print("BP Min ", torch.amin(BP1, dim=(1,2)), torch.amax(BP1, dim=(1,2)))

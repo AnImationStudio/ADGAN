@@ -22,7 +22,7 @@ class ADGen(nn.Module):
         self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
 
         # content encoder
-        input_dim = 18
+        input_dim = 3#18
         self.enc_content = ContentEncoder(n_downsample, n_res, input_dim, dim, 'bn', activ, pad_type=pad_type)
         input_dim = 3
         self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)

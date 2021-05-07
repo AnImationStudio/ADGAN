@@ -55,7 +55,9 @@ class KeyDataset(BaseDataset):
             BP2_path = os.path.join(self.dir_DP, P2_name[:-4] + '.npz') # bone of person 2
             # BP2_path = os.path.join(self.dir_K, P2_name + '.npy') # bone of person 2
 
-            if(os.path.exists(BP1_path) and os.path.exists(BP2_path)):
+            SP1_path = os.path.join(self.dir_TEX, P2_name[:-4] + '.npz')
+
+            if(os.path.exists(BP1_path) and os.path.exists(BP2_path) and os.path.exists(SP1_path)):
                 break
 
 
@@ -112,16 +114,20 @@ class KeyDataset(BaseDataset):
         # print("BP Min ", torch.amin(BP1, dim=(1,2)), torch.amax(BP1, dim=(1,2)))
 
         # segmentation
-        SP1_name = self.split_name(P1_name, 'semantic_merge3')
-        SP1_path = os.path.join(self.dir_SP, SP1_name)
-        SP1_path = SP1_path[:-4] + '.npy'
-        SP1_data = np.load(SP1_path)
-        SP1 = np.zeros((self.SP_input_nc, 256, 176), dtype='float32')
-        for id in range(self.SP_input_nc):
-            SP1[id] = (SP1_data == id).astype('float32')
+        # SP1_name = self.split_name(P1_name, 'semantic_merge3')
+        # SP1_path = os.path.join(self.dir_SP, SP1_name)
+        # SP1_path = SP1_path[:-4] + '.npy'
+        
+        # SP1_data = np.load(SP1_path)
+        # SP1 = np.zeros((self.SP_input_nc, 256, 176), dtype='float32')
+        # for id in range(self.SP_input_nc):
+        #     SP1[id] = (SP1_data == id).astype('float32')
 
-        SP1 = torch.from_numpy(SP1).float()
-        SP1 = self.transformSP1(SP1)
+        SP1 = np.load(SP1_path)['arr_0']
+        SP1 = torch.from_numpy(SP1).float()        
+        SP1 = SP1.transpose(3, 1) #c,w,h
+        SP1 = SP1.transpose(3, 2) #c,h,w 
+        # SP1 = self.transformSP1(SP1)
 
         # print("Input dimensions ", P1.shape, P2.shape, BP1.shape, BP2.shape,
         #     SP1.shape)

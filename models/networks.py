@@ -9,6 +9,7 @@ import torch.nn.functional as F
 
 import sys
 from models.model_adgen import ADGen
+from models.stylegan2 import StyleGan2Gen
 
 
 # added
@@ -144,11 +145,17 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         mlp_dim = 256
         netG = AdaINGen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
     elif which_model_netG == 'ADGen':
-        style_dim = 512
+        style_dim = 576 #512
         n_res =8
         mlp_dim = 256
         print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
         netG = ADGen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+    elif which_model_netG == 'StyleGan2Gen':
+        style_dim = 576 #512
+        n_res =8
+        mlp_dim = 256
+        print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+        netG = StyleGan2Gen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
     elif which_model_netG == 'AdaGen_SS_mix':
         style_dim = 512
         n_res = 8

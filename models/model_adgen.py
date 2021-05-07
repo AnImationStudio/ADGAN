@@ -18,7 +18,7 @@ class ADGen(nn.Module):
 
         # style encoder
         input_dim = 3
-        SP_input_nc = 8
+        SP_input_nc = 24#8
         self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
 
         # content encoder
@@ -133,9 +133,10 @@ class VggStyleEncoder(nn.Module):
 
         for i in range(sem.size(1)):
             semi = sem[:, i, :, :]
-            semi = torch.unsqueeze(semi, 1)
-            semi = semi.repeat(1, x.size(1), 1, 1)
-            xi = x.mul(semi)
+            # semi = torch.unsqueeze(semi, 1)
+            # semi = semi.repeat(1, x.size(1), 1, 1)
+            # xi = x.mul(semi)
+            xi = semi
             if i is 0:
                 out = self.texture_enc(xi)
             else:

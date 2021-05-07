@@ -264,16 +264,16 @@ class TransferModel(BaseModel):
 
         pair_loss.backward()
 
-        exit_now = False
-        for name, param in self.netG.module.named_parameters():
-            if param.requires_grad:
-                # print("Parameters ", name, param.data)
-                t = param.grad
-                # print("Shape of grad ", t)
-                check = (t != t)
-                if(check.any()):
-                    print("After Grads ", name, param.grad)
-                    exit_now = True
+        # exit_now = False
+        # for name, param in self.netG.module.named_parameters():
+        #     if param.requires_grad:
+        #         # print("Parameters ", name, param.data)
+        #         t = param.grad
+        #         # print("Shape of grad ", t)
+        #         check = (t != t)
+        #         if(check.any()):
+        #             print("After Grads ", name, param.grad)
+        #             exit_now = True
         # for name, param in self.netG.module.dec.model.named_parameters():
         #     if param.requires_grad:
         #         # print("Parameters ", name, param.data)
@@ -296,19 +296,19 @@ class TransferModel(BaseModel):
         #             # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
         #             #     self.netG.module.enc_content.model[0].norm.running_var)
         #             exit_now = True
-        for name, param in self.netG.module.named_parameters():
-            if param.requires_grad:
-                t = param.data
-                # print("Shape of grad ", t)
-                check = (t != t)
-                if(check.any()):
-                    print("After data ", name, param.data)
-                    # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
-                    #     self.netG.module.enc_content.model[0].norm.running_var)
-                    exit_now = True
+        # for name, param in self.netG.module.named_parameters():
+        #     if param.requires_grad:
+        #         t = param.data
+        #         # print("Shape of grad ", t)
+        #         check = (t != t)
+        #         if(check.any()):
+        #             print("After data ", name, param.data)
+        #             # print("Data ", self.netG.module.enc_content.model[0].norm.running_mean,
+        #             #     self.netG.module.enc_content.model[0].norm.running_var)
+        #             exit_now = True
 
-        if(exit_now):
-            exit(-1)
+        # if(exit_now):
+        #     exit(-1)
 
         self.pair_L1loss = pair_L1loss.data
         if self.opt.with_D_PB or self.opt.with_D_PP:

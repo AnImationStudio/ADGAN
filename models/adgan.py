@@ -28,6 +28,7 @@ class TransferModel(BaseModel):
         self.input_P2_set = self.Tensor(nb, opt.P_input_nc, size, size)
         self.input_BP2_set = self.Tensor(nb, opt.BP_input_nc, size, size)
         self.input_SP1_set = self.Tensor(nb, opt.SP_input_nc, size, size)
+        self.input_Noise_set = self.Tensor(nb, 1, size, size)
 
         input_nc = [opt.P_input_nc, opt.BP_input_nc+opt.BP_input_nc]
         self.netG = networks.define_G(input_nc, opt.P_input_nc,
@@ -145,6 +146,9 @@ class TransferModel(BaseModel):
         input_SP1 = input['SP1']
         self.input_SP1_set.resize_(input_SP1.size()).copy_(input_SP1)
 
+        input_Noise = input['Noise']
+        self.input_Noise_set.resize_(input_Noise.size()).copy_(input_Noise)
+
         self.image_paths = input['P1_path'][0] + '___' + input['P2_path'][0]
         self.person_paths = input['P1_path'][0]
 
@@ -157,8 +161,10 @@ class TransferModel(BaseModel):
         self.input_BP2 = Variable(self.input_BP2_set)
 
         self.input_SP1 = Variable(self.input_SP1_set)
+        self.input_Noise = Variable(self.input_Noise_set)
 
-        self.fake_p2 = self.netG(self.input_BP2, self.input_P1, self.input_SP1)
+        self.fake_p2 = self.netG(self.input_BP2, self.input_P1, self.input_SP1,
+            self.input_Noise)
         # print("Shape ",self.fake_p2.shape, self.input_P1.shape,  self.input_SP1.shape,
         #     self.input_BP2.shape, self.fake_p2.shape
         #     )

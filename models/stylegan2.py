@@ -72,10 +72,11 @@ class StyleGan2Gen(nn.Module):
         self.latent_dim = latent_dim
 
         # self.noise = torch.FloatTensor(1, 44, 64, 1).uniform_(0., 1.)
-        self.register_buffer('noise', torch.FloatTensor(256, 44, 64, 1).uniform_(0., 1.))
+        # self.register_buffer('noise', torch.FloatTensor(256, 44, 64, 1).uniform_(0., 1.))
+        # self.register_buffer('noise', torch.zeros((256, 44, 64, 1), dtype=torch.float32))
 
 
-    def forward(self, img_A, img_B, sem_B):
+    def forward(self, img_A, img_B, sem_B, noise):
         # noise = image_noise(batch_size, image_size, device=self.rank)
         # reconstruct an image
         # print("Input ", torch.min(img_A), torch.max(img_A))
@@ -94,7 +95,8 @@ class StyleGan2Gen(nn.Module):
         style = style.view(style.size(0), -1, self.latent_dim)
 
         # images_recon = self.decode(content, style)
-        images_recon = self.gen(content, style, self.noise)
+        # print("Noise ", noise.shape)        
+        images_recon = self.gen(content, style, noise)
         # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
@@ -255,7 +257,7 @@ class Generator(nn.Module):
 
         filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
-        print("Filter configuration ", filters)
+        # print("Filter configuration ", filters)
 
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
@@ -310,7 +312,7 @@ class Generator(nn.Module):
             if exists(attn):
                 x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)
-
+        rgb = nn.functional.tanh(rgb)
         return rgb
 
 def image_noise(n, im_size, device):

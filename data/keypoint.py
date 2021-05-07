@@ -109,6 +109,7 @@ class KeyDataset(BaseDataset):
             P2 = self.transform(P2_img)
         BP1 = self.transformBP(BP1)
         BP2 = self.transformBP(BP2)
+        Noise = torch.zeros((P1.shape[2], P1.shape[1], 1), dtype=torch.float32)
 
         # print(BP1.shape)
         # print("BP Min ", torch.amin(BP1, dim=(1,2)), torch.amax(BP1, dim=(1,2)))
@@ -136,7 +137,7 @@ class KeyDataset(BaseDataset):
         #     torch.amin(SP1, dim=(1,2)), torch.amax(SP1, dim=(1,2)))
 
         return {'P1': P1, 'BP1': BP1, 'SP1': SP1, 'P2': P2, 'BP2': BP2,
-                'P1_path': P1_name, 'P2_path': P2_name}
+                'P1_path': P1_name, 'P2_path': P2_name, 'Noise':Noise}
 
                 
 

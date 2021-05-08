@@ -156,6 +156,12 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         mlp_dim = 256
         print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
         netG = StyleGan2Gen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+    elif which_model_netG == 'SirenFilmGen':
+        style_dim = 576 #512
+        n_res =8
+        mlp_dim = 256
+        print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+        netG = SirenFilmGen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
     elif which_model_netG == 'AdaGen_SS_mix':
         style_dim = 512
         n_res = 8

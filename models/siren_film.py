@@ -21,14 +21,15 @@ from torch.nn.init import _calculate_correct_fan
 
 
 from .model_adgen import VggStyleEncoder, LinearBlock, MLP, Decoder, Conv2dBlock
+from .stylegan2 import DownSampleEnc
 
 
-class StyleGan2Gen(nn.Module):
+class SirenFilmGen(nn.Module):
     # AdaIN auto-encoder architecture
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
         super(StyleGan2Gen, self).__init__()
 
-        n_downsample = 2
+        n_downsample = 4
         style_dim = 576
 
         # style encoder
@@ -38,26 +39,21 @@ class StyleGan2Gen(nn.Module):
 
         # content encoder
         input_dim = 3#18
-        self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+        self.down_samp_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
         # input_dim = 3
         # self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
+        self.up_samp_content = UpSampleDec(n_downsample, dim, dim, 'in', activ, pad_type=pad_type)
+
 
         self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
 
-        num_layers = n_downsample + 1
-        latent_dim = 256
-        network_capacity = 16*2
-        #Things to control: Above + noise vector
+        layers = []
+        input_dim = 256
+        output_dim = 3
+        self.siren_enc = SIREN(layers, input_dim, output_dim)
 
         # fusion module
-        self.mlp = MLP(style_dim, num_layers*latent_dim, mlp_dim, 3, norm='none', activ=activ)
-
-        self.gen = Generator(num_layers, latent_dim, network_capacity = network_capacity)
-        self.latent_dim = latent_dim
-
-        # self.noise = torch.FloatTensor(1, 44, 64, 1).uniform_(0., 1.)
-        self.register_buffer('noise', torch.FloatTensor(256, 44, 64, 1).uniform_(0., 1.))
-
+        self.mlp = MLP(style_dim, self.get_num_sine_params(self.siren_enc), mlp_dim, 3, norm='none', activ=activ)
 
     def forward(self, img_A, img_B, sem_B):
         # noise = image_noise(batch_size, image_size, device=self.rank)
@@ -82,6 +78,54 @@ class StyleGan2Gen(nn.Module):
         # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
+
+    def decode(self, content, style):
+        # decode content and style codes to an image
+        adain_params = self.mlp(style)
+        # print("Style value for adain ", adain_params.shape,
+        #     style.shape)
+
+        self.assign_sine_params(adain_params, self.dec)
+        images = self.dec(content)
+        return images
+
+    def assign_sine_params(self, sine_params, model):
+        # assign the adain_params to the AdaIN layers in model
+        index = 0
+        for m in model.modules():
+            if m.__class__.__name__ == "Sine":
+                m.w0 = sine_params[2*index]
+                m.b0 = sine_params[2*index+1]
+                index = index + 1
+
+    def get_num_sine_params(self, model):
+        # return the number of AdaIN parameters needed by the model
+        num_sine_params = 0
+        for m in model.modules():
+            if m.__class__.__name__ == "Sine":
+                num_sine_params += 2
+        return num_sine_params
+
+
+
+class UpSampleDec(nn.Module):
+    def __init__(self, n_upsample, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero'):
+        super(Decoder, self).__init__()
+
+        self.model = []
+        # # AdaIN residual blocks
+        # self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
+        # upsampling blocks
+        for i in range(n_upsample):
+            self.model += [nn.Upsample(scale_factor=2),
+                           Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+            dim //= 2
+        # use reflection padding in the last conv layer
+        self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
+        self.model = nn.Sequential(*self.model)
+
+    def forward(self, x):
+        return self.model(x)
 
 
 def siren_uniform_(tensor: torch.Tensor, mode: str = 'fan_in', c: float = 6):
@@ -114,7 +158,7 @@ def siren_uniform_(tensor: torch.Tensor, mode: str = 'fan_in', c: float = 6):
 
 
 class Sine(nn.Module):
-    def __init__(self, w0: float = 1.0):
+    def __init__(self, w0: float = 1.0, b0: float = 0.0):
         """Sine activation function with w0 scaling support.
         Example:
             >>> w = torch.tensor([3.14, 1.57])
@@ -126,10 +170,11 @@ class Sine(nn.Module):
         """
         super(Sine, self).__init__()
         self.w0 = w0
+        self.b0 = b0
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self._check_input(x)
-        return torch.sin(self.w0 * x)
+        return torch.sin(self.w0 * x + self.b0)
 
     @staticmethod
     def _check_input(x):

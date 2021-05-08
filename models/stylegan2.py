@@ -28,8 +28,8 @@ from kornia.filters import filter2D
 
 import torchvision
 from torchvision import transforms
-from stylegan2_pytorch.version import __version__
-from stylegan2_pytorch.diff_augment import DiffAugment
+# from stylegan2_pytorch.version import __version__
+# from stylegan2_pytorch.diff_augment import DiffAugment
 
 from vector_quantize_pytorch import VectorQuantize
 
@@ -44,16 +44,19 @@ class StyleGan2Gen(nn.Module):
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
         super(StyleGan2Gen, self).__init__()
 
-        n_downsample = 2
+        n_downsample = 4
         style_dim = 576
 
         # style encoder
         input_dim = 3
         SP_input_nc = 24#8
+        # dim = 64
         self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
 
         # content encoder
         input_dim = 3#18
+        dim = 32
+        # Foe dimension
         self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
         # input_dim = 3
         # self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
@@ -62,7 +65,7 @@ class StyleGan2Gen(nn.Module):
 
         num_layers = n_downsample + 1
         latent_dim = 256
-        network_capacity = 16*2
+        network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
         #Things to control: Above + noise vector
 
         # fusion module
@@ -257,7 +260,6 @@ class Generator(nn.Module):
 
         filters = [network_capacity * (2 ** (i + 1)) for i in range(self.num_layers)][::-1]
 
-        # print("Filter configuration ", filters)
 
         set_fmap_max = partial(min, fmap_max)
         filters = list(map(set_fmap_max, filters))
@@ -265,6 +267,8 @@ class Generator(nn.Module):
         filters = [init_channels, *filters]
 
         in_out_pairs = zip(filters[:-1], filters[1:])
+        print("Filter configuration ", filters, in_out_pairs)
+
         self.no_const = no_const
 
         if no_const:
@@ -365,5 +369,62 @@ def raise_if_nan(t):
     if torch.isnan(t):
         raise NanException
 
+
+def DiffAugment(x, types=[]):
+    for p in types:
+        for f in AUGMENT_FNS[p]:
+            x = f(x)
+    return x.contiguous()
+
+def rand_brightness(x):
+    x = x + (torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device) - 0.5)
+    return x
+
+def rand_saturation(x):
+    x_mean = x.mean(dim=1, keepdim=True)
+    x = (x - x_mean) * (torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device) * 2) + x_mean
+    return x
+
+def rand_contrast(x):
+    x_mean = x.mean(dim=[1, 2, 3], keepdim=True)
+    x = (x - x_mean) * (torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device) + 0.5) + x_mean
+    return x
+
+def rand_translation(x, ratio=0.125):
+    shift_x, shift_y = int(x.size(2) * ratio + 0.5), int(x.size(3) * ratio + 0.5)
+    translation_x = torch.randint(-shift_x, shift_x + 1, size=[x.size(0), 1, 1], device=x.device)
+    translation_y = torch.randint(-shift_y, shift_y + 1, size=[x.size(0), 1, 1], device=x.device)
+    grid_batch, grid_x, grid_y = torch.meshgrid(
+        torch.arange(x.size(0), dtype=torch.long, device=x.device),
+        torch.arange(x.size(2), dtype=torch.long, device=x.device),
+        torch.arange(x.size(3), dtype=torch.long, device=x.device),
+    )
+    grid_x = torch.clamp(grid_x + translation_x + 1, 0, x.size(2) + 1)
+    grid_y = torch.clamp(grid_y + translation_y + 1, 0, x.size(3) + 1)
+    x_pad = F.pad(x, [1, 1, 1, 1, 0, 0, 0, 0])
+    x = x_pad.permute(0, 2, 3, 1).contiguous()[grid_batch, grid_x, grid_y].permute(0, 3, 1, 2)
+    return x
+
+def rand_cutout(x, ratio=0.5):
+    cutout_size = int(x.size(2) * ratio + 0.5), int(x.size(3) * ratio + 0.5)
+    offset_x = torch.randint(0, x.size(2) + (1 - cutout_size[0] % 2), size=[x.size(0), 1, 1], device=x.device)
+    offset_y = torch.randint(0, x.size(3) + (1 - cutout_size[1] % 2), size=[x.size(0), 1, 1], device=x.device)
+    grid_batch, grid_x, grid_y = torch.meshgrid(
+        torch.arange(x.size(0), dtype=torch.long, device=x.device),
+        torch.arange(cutout_size[0], dtype=torch.long, device=x.device),
+        torch.arange(cutout_size[1], dtype=torch.long, device=x.device),
+    )
+    grid_x = torch.clamp(grid_x + offset_x - cutout_size[0] // 2, min=0, max=x.size(2) - 1)
+    grid_y = torch.clamp(grid_y + offset_y - cutout_size[1] // 2, min=0, max=x.size(3) - 1)
+    mask = torch.ones(x.size(0), x.size(2), x.size(3), dtype=x.dtype, device=x.device)
+    mask[grid_batch, grid_x, grid_y] = 0
+    x = x * mask.unsqueeze(1)
+    return x
+
+AUGMENT_FNS = {
+    'color': [rand_brightness, rand_saturation, rand_contrast],
+    'translation': [rand_translation],
+    'cutout': [rand_cutout],
+}
 
 

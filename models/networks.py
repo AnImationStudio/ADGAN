@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import sys
 from models.model_adgen import ADGen
 from models.stylegan2 import StyleGan2Gen
+from models.siren_film import SirenFilmGen
 
 
 # added

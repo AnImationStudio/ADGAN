@@ -27,9 +27,9 @@ from .stylegan2 import DownSampleEnc
 class SirenFilmGen(nn.Module):
     # AdaIN auto-encoder architecture
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
-        super(StyleGan2Gen, self).__init__()
+        super(SirenFilmGen, self).__init__()
 
-        n_downsample = 4
+        n_downsample = 2
         style_dim = 576
 
         # style encoder
@@ -42,24 +42,26 @@ class SirenFilmGen(nn.Module):
         self.down_samp_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
         # input_dim = 3
         # self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
-        self.up_samp_content = UpSampleDec(n_downsample, dim, dim, 'in', activ, pad_type=pad_type)
+        input_dim = dim*(2**n_downsample)
+        self.up_samp_content = UpSampleDec(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
 
 
         self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
 
-        layers = []
-        input_dim = 256
+        layers = [256, 256, 256, 256, 256, 256, 256, 256]
+        input_dim = dim
         output_dim = 3
         self.siren_enc = SIREN(layers, input_dim, output_dim)
 
         # fusion module
         self.mlp = MLP(style_dim, self.get_num_sine_params(self.siren_enc), mlp_dim, 3, norm='none', activ=activ)
 
-    def forward(self, img_A, img_B, sem_B):
+    def forward(self, img_A, img_B, sem_B, noise):
         # noise = image_noise(batch_size, image_size, device=self.rank)
         # reconstruct an image
         # print("Input ", torch.min(img_A), torch.max(img_A))
-        content = self.enc_content(img_A)
+        content = self.down_samp_content(img_A)
+        content = self.up_samp_content(content)
         # print("Content  ", torch.min(content), torch.max(content))
         # print("Content  ", content.shape)
 
@@ -70,23 +72,18 @@ class SirenFilmGen(nn.Module):
         style = torch.unsqueeze(style, 2)
         style = torch.unsqueeze(style, 3)
         # print("Style1 ", style.shape)
-        style = self.mlp(style)
-        style = style.view(style.size(0), -1, self.latent_dim)
-
-        # images_recon = self.decode(content, style)
-        images_recon = self.gen(content, style, self.noise)
-        # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
-        # print("images_recon ", images_recon.shape, content.shape)
+        images_recon = self.decode(content, style)
+        # print("Recon image ", images_recon.shape)
         return images_recon
 
     def decode(self, content, style):
         # decode content and style codes to an image
-        adain_params = self.mlp(style)
-        # print("Style value for adain ", adain_params.shape,
+        sine_params = self.mlp(style)
+        # print("Style value for adain ", sine_params.shape,
         #     style.shape)
 
-        self.assign_sine_params(adain_params, self.dec)
-        images = self.dec(content)
+        self.assign_sine_params(sine_params, self.siren_enc)
+        images = self.siren_enc(content)
         return images
 
     def assign_sine_params(self, sine_params, model):
@@ -94,8 +91,8 @@ class SirenFilmGen(nn.Module):
         index = 0
         for m in model.modules():
             if m.__class__.__name__ == "Sine":
-                m.w0 = sine_params[2*index]
-                m.b0 = sine_params[2*index+1]
+                m.w0 = sine_params[:, 2*index]
+                m.b0 = sine_params[:, 2*index+1]
                 index = index + 1
 
     def get_num_sine_params(self, model):
@@ -110,7 +107,7 @@ class SirenFilmGen(nn.Module):
 
 class UpSampleDec(nn.Module):
     def __init__(self, n_upsample, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero'):
-        super(Decoder, self).__init__()
+        super(UpSampleDec, self).__init__()
 
         self.model = []
         # # AdaIN residual blocks
@@ -174,7 +171,14 @@ class Sine(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self._check_input(x)
-        return torch.sin(self.w0 * x + self.b0)
+        # print("sine input ", self.w0.shape, x.shape)
+        x = x.transpose(0, 3)
+        # print("sine input 1", self.w0.shape, x.shape)
+        x = torch.sin(self.w0 * x + self.b0)
+        # print("sine input 2", self.w0.shape, x.shape)
+        x = x.transpose(0, 3)
+        # print("sine input 3", self.w0.shape, x.shape)
+        return x
 
     @staticmethod
     def _check_input(x):
@@ -244,6 +248,14 @@ class SIREN(nn.Module):
         assert len(layers) >= 1, 'layers should not be empty'
 
     def forward(self, X):
-        return self.network(X)
+        # print("Network features ", X.shape)
+        X = X.transpose(1, 3)
+        # print("Network features 1", X.shape)
+        X = self.network(X)
+        # print("Network features 2", X.shape)
+        X = X.transpose(1, 3)
+        # print("Network features 3", X.shape)
+        X = nn.functional.tanh(X)
+        return X
 
 

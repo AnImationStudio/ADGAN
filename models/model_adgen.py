@@ -32,7 +32,7 @@ class ADGen(nn.Module):
         # fusion module
         self.mlp = MLP(style_dim, self.get_num_adain_params(self.dec), mlp_dim, 3, norm='none', activ=activ)
 
-    def forward(self, img_A, img_B, sem_B):
+    def forward(self, img_A, img_B, sem_B, noise):
         # reconstruct an image
         # print("Input ", torch.min(img_A), torch.max(img_A))
         content = self.enc_content(img_A)
@@ -131,12 +131,14 @@ class VggStyleEncoder(nn.Module):
 
     def forward(self, x, sem):
 
+        # print("Style input ", sem.shape)
         for i in range(sem.size(1)):
             semi = sem[:, i, :, :]
             # semi = torch.unsqueeze(semi, 1)
             # semi = semi.repeat(1, x.size(1), 1, 1)
             # xi = x.mul(semi)
             xi = semi
+            # print("Style input ", semi.shape)
             if i is 0:
                 out = self.texture_enc(xi)
             else:
@@ -343,7 +345,7 @@ class LinearBlock(nn.Module):
 # Normalization layers
 ##################################################################################
 class AdaptiveInstanceNorm2d(nn.Module):
-    def __init__(self, num_features, eps=1e-3, momentum=0.1):
+    def __init__(self, num_features, eps=1e-2, momentum=0.1):
         super(AdaptiveInstanceNorm2d, self).__init__()
         self.num_features = num_features
         self.eps = eps

@@ -30,7 +30,7 @@ class SirenFilmGen(nn.Module):
         super(SirenFilmGen, self).__init__()
 
         n_downsample = 2
-        style_dim = 576
+        style_dim = 24#576
 
         # style encoder
         input_dim = 3

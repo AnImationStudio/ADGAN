@@ -37,46 +37,36 @@ from PIL import Image
 from pathlib import Path
 
 from .model_adgen import VggStyleEncoder, LinearBlock, MLP, Decoder, Conv2dBlock
-
+from .vgg import VGG
+import os
+import torchvision.models.vgg as models
 
 class StyleGan2Gen(nn.Module):
     # AdaIN auto-encoder architecture
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
         super(StyleGan2Gen, self).__init__()
 
-        n_downsample = 4
-        style_dim = 576
-
-        # style encoder
-        input_dim = 3
+        style_downsample = 4
+        style_dim = 2048
         SP_input_nc = 24#8
-        # dim = 64
-        self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+        input_dim = 3
+        style_pool_feature = dim*(2**style_downsample)
+        self.enc_style = VGGStyleEnc()
+        self.enc_style1 = DownSampleEnc(style_downsample, input_dim*SP_input_nc, dim, 'in', activ, pad_type=pad_type)
+        self.enc_style_pooling = PoolingModule(style_pool_feature, style_dim)
 
         # content encoder
+        n_downsample = 4
         input_dim = 3#18
         dim = 32
         # Foe dimension
         self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
-        # input_dim = 3
-        # self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
-
-        self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
 
         num_layers = n_downsample + 1
-        latent_dim = 256
         network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
-        #Things to control: Above + noise vector
+        # #Things to control: Above + noise vector
 
-        # fusion module
-        self.mlp = MLP(style_dim, num_layers*latent_dim, mlp_dim, 3, norm='none', activ=activ)
-
-        self.gen = Generator(num_layers, latent_dim, network_capacity = network_capacity)
-        self.latent_dim = latent_dim
-
-        # self.noise = torch.FloatTensor(1, 44, 64, 1).uniform_(0., 1.)
-        # self.register_buffer('noise', torch.FloatTensor(256, 44, 64, 1).uniform_(0., 1.))
-        # self.register_buffer('noise', torch.zeros((256, 44, 64, 1), dtype=torch.float32))
+        self.gen = Generator(num_layers, style_dim, network_capacity = network_capacity)
 
 
     def forward(self, img_A, img_B, sem_B, noise):
@@ -87,25 +77,38 @@ class StyleGan2Gen(nn.Module):
         # print("Content  ", torch.min(content), torch.max(content))
         # print("Content  ", content.shape)
 
-        style = self.enc_style(img_B, sem_B)
-        # print("Style1 ", torch.min(style), torch.max(style))
-        style = self.fc(style.view(style.size(0), -1))
-        # print("Style2 ", torch.min(style), torch.max(style))
-        style = torch.unsqueeze(style, 2)
-        style = torch.unsqueeze(style, 3)
-        # print("Style1 ", style.shape)
-        style = self.mlp(style)
-        style = style.view(style.size(0), -1, self.latent_dim)
-
-        # images_recon = self.decode(content, style)
+        sem_B_shape = sem_B.shape
+        sem_B = sem_B.contiguous().view(sem_B.shape[0], -1, sem_B.shape[-2], sem_B.shape[-1])
+        style = self.enc_style1(sem_B)
+        style = self.enc_style_pooling(style)
         # print("Noise ", noise.shape)        
-        images_recon = self.gen(content, style, noise)
+        images_recon = self.gen(content, style.squeeze(), noise)
         # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
 
 
 # stylegan2 classes
+class VGGStyleEnc(nn.Module):
+    def __init__(self):
+        super(VGGStyleEnc, self).__init__()
+        vgg19 = models.vgg19(pretrained=False)
+        vgg19.load_state_dict(torch.load('/nitthilan/data/ADGAN/data/vgg19-dcbb9e9d.pth'))
+        self.vgg = vgg19.features
+
+    def forward(self, x):
+        return x
+
+class PoolingModule(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(PoolingModule, self).__init__()
+        self.model = []
+        self.model += [nn.AdaptiveAvgPool2d(1)] # global average pooling
+        self.model += [nn.Conv2d(input_dim, output_dim, 1, 1, 0)]
+        self.model = nn.Sequential(*self.model)
+
+    def forward(self, x):
+        return self.model(x)
 
 class DownSampleEnc(nn.Module):
     def __init__(self, n_downsample, input_dim, dim, norm, activ, pad_type):
@@ -299,8 +302,8 @@ class Generator(nn.Module):
             )
             self.blocks.append(block)
 
-    def forward(self, x, styles, input_noise):
-        batch_size = styles.shape[0]
+    def forward(self, x, style, input_noise):
+        # batch_size = styles.shape[0]
 
         # if self.no_const:
         #     avg_style = styles.mean(dim=1)[:, :, None, None]
@@ -309,10 +312,11 @@ class Generator(nn.Module):
         #     x = self.initial_block.expand(batch_size, -1, -1, -1)
 
         rgb = None
-        styles = styles.transpose(0, 1)
+        # styles = styles.transpose(0, 1)
         x = self.initial_conv(x)
 
-        for style, block, attn in zip(styles, self.blocks, self.attns):
+        # print("input styles ", style.shape)
+        for block, attn in zip(self.blocks, self.attns):
             if exists(attn):
                 x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)

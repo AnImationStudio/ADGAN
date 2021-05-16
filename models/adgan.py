@@ -422,8 +422,11 @@ class TransferModel(BaseModel):
         input_P1 = util.tensor2im(self.input_P1.data)
         input_P2 = util.tensor2im(self.input_P2.data)
 
-        input_BP1 = util.draw_pose_from_map(self.input_BP1.data)[0]
-        input_BP2 = util.draw_pose_from_map(self.input_BP2.data)[0]
+        # input_BP1 = util.draw_pose_from_map(self.input_BP1.data)[0]
+        # input_BP2 = util.draw_pose_from_map(self.input_BP2.data)[0]
+
+        input_BP1 = self.input_BP1.data[0].cpu().transpose(1, 0).transpose(2, 1).numpy()*256
+        input_BP2 = self.input_BP2.data[0].cpu().transpose(1, 0).transpose(2, 1).numpy()*256
 
         fake_p2 = util.tensor2im(self.fake_p2.data)
 

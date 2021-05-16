@@ -22,6 +22,7 @@ from torch.nn.init import _calculate_correct_fan
 
 from .model_adgen import VggStyleEncoder, LinearBlock, MLP, Decoder, Conv2dBlock
 from .stylegan2 import DownSampleEnc
+import torchvision.models.vgg as models
 
 
 class SirenFilmGen(nn.Module):
@@ -29,13 +30,17 @@ class SirenFilmGen(nn.Module):
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
         super(SirenFilmGen, self).__init__()
 
+        style_dim = 32#288#576 #512
+        n_res = 8
+        mlp_dim = 256
+        n_mlp = 3#8
         n_downsample = 2
-        style_dim = 24#576
 
-        # style encoder
-        input_dim = 3
-        SP_input_nc = 24#8
-        self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+        # # style encoder
+        # input_dim = 3
+        # SP_input_nc = 24
+        # self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+        self.enc_style = VGGStyleEnc()
 
         # content encoder
         input_dim = 3#18
@@ -46,15 +51,16 @@ class SirenFilmGen(nn.Module):
         self.up_samp_content = UpSampleDec(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
 
 
-        self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
+        # self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
 
-        layers = [256, 256, 256, 256, 256, 256, 256, 256]
+        layers = n_res*[256]#, 256, 256, 256, 256, 256, 256, 256]
         input_dim = dim
         output_dim = 3
         self.siren_enc = SIREN(layers, input_dim, output_dim)
 
         # fusion module
-        self.mlp = MLP(style_dim, self.get_num_sine_params(self.siren_enc), mlp_dim, 3, norm='none', activ=activ)
+        self.mlp = MLP(style_dim, self.get_num_sine_params(self.siren_enc), mlp_dim, 
+            n_mlp, norm='none', activ=activ)
 
     def forward(self, img_A, img_B, sem_B, noise):
         # noise = image_noise(batch_size, image_size, device=self.rank)
@@ -65,13 +71,14 @@ class SirenFilmGen(nn.Module):
         # print("Content  ", torch.min(content), torch.max(content))
         # print("Content  ", content.shape)
 
-        style = self.enc_style(img_B, sem_B)
-        # print("Style1 ", torch.min(style), torch.max(style))
-        style = self.fc(style.view(style.size(0), -1))
-        # print("Style2 ", torch.min(style), torch.max(style))
-        style = torch.unsqueeze(style, 2)
-        style = torch.unsqueeze(style, 3)
-        # print("Style1 ", style.shape)
+        # style = self.enc_style(img_B, sem_B)
+        # # print("Style1 ", torch.min(style), torch.max(style))
+        # style = self.fc(style.view(style.size(0), -1))
+        # # print("Style2 ", torch.min(style), torch.max(style))
+        # style = torch.unsqueeze(style, 2)
+        # style = torch.unsqueeze(style, 3)
+        # # print("Style1 ", style.shape)
+        style = noise
         images_recon = self.decode(content, style)
         # print("Recon image ", images_recon.shape)
         return images_recon
@@ -104,6 +111,106 @@ class SirenFilmGen(nn.Module):
         return num_sine_params
 
 
+
+
+class SirenFilmGen1(nn.Module):
+    # AdaIN auto-encoder architecture
+    def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
+        super(SirenFilmGen1, self).__init__()
+
+        input_dim = 3
+        SP_input_nc = 24
+
+        style_dim = SP_input_nc#288#576 #512
+        n_res = 8
+        mlp_dim = 256
+        n_mlp = 3#8
+        n_downsample = 2
+
+        # # style encoder
+        self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+
+        # content encoder
+        input_dim = 3#18
+        self.down_samp_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+        # input_dim = 3
+        # self.dec = Decoder(n_downsample, n_res, self.enc_content.output_dim, input_dim, res_norm='adain', activ=activ, pad_type=pad_type)
+        input_dim = dim*(2**n_downsample)
+        self.up_samp_content = UpSampleDec(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+
+
+        self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
+
+        layers = n_res*[256]#, 256, 256, 256, 256, 256, 256, 256]
+        input_dim = dim
+        output_dim = 3
+        self.siren_enc = SIREN(layers, input_dim, output_dim)
+
+        # fusion module
+        self.mlp = MLP(style_dim, self.get_num_sine_params(self.siren_enc), mlp_dim, 
+            n_mlp, norm='none', activ=activ)
+
+    def forward(self, img_A, img_B, sem_B, noise):
+        # noise = image_noise(batch_size, image_size, device=self.rank)
+        # reconstruct an image
+        # print("Input ", torch.min(img_A), torch.max(img_A))
+        content = self.down_samp_content(img_A)
+        content = self.up_samp_content(content)
+        # print("Content  ", torch.min(content), torch.max(content))
+        # print("Content  ", content.shape)
+
+        style = self.enc_style(img_B, sem_B)
+        # print("Style1 ", torch.min(style), torch.max(style))
+        style = self.fc(style.view(style.size(0), -1))
+        # print("Style2 ", torch.min(style), torch.max(style))
+        style = torch.unsqueeze(style, 2)
+        style = torch.unsqueeze(style, 3)
+        # print("Style1 ", style.shape)
+        # style = noise
+        images_recon = self.decode(content, style)
+        # print("Recon image ", images_recon.shape)
+        return images_recon
+
+    def decode(self, content, style):
+        # decode content and style codes to an image
+        sine_params = self.mlp(style)
+        # print("Style value for adain ", sine_params.shape,
+        #     style.shape)
+
+        self.assign_sine_params(sine_params, self.siren_enc)
+        images = self.siren_enc(content)
+        return images
+
+    def assign_sine_params(self, sine_params, model):
+        # assign the adain_params to the AdaIN layers in model
+        index = 0
+        for m in model.modules():
+            if m.__class__.__name__ == "Sine":
+                m.w0 = sine_params[:, 2*index]
+                m.b0 = sine_params[:, 2*index+1]
+                index = index + 1
+
+    def get_num_sine_params(self, model):
+        # return the number of AdaIN parameters needed by the model
+        num_sine_params = 0
+        for m in model.modules():
+            if m.__class__.__name__ == "Sine":
+                num_sine_params += 2
+        return num_sine_params
+
+
+
+
+# stylegan2 classes
+class VGGStyleEnc(nn.Module):
+    def __init__(self):
+        super(VGGStyleEnc, self).__init__()
+        vgg19 = models.vgg19(pretrained=False)
+        vgg19.load_state_dict(torch.load('/nitthilan/data/ADGAN/data/vgg19-dcbb9e9d.pth'))
+        self.vgg = vgg19.features
+
+    def forward(self, x):
+        return x
 
 class UpSampleDec(nn.Module):
     def __init__(self, n_upsample, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero'):

@@ -41,6 +41,9 @@ from .vgg import VGG
 import os
 import torchvision.models.vgg as models
 
+
+
+n_downsample = 4
 class StyleGan2Gen(nn.Module):
     # AdaIN auto-encoder architecture
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
@@ -56,14 +59,14 @@ class StyleGan2Gen(nn.Module):
         self.enc_style_pooling = PoolingModule(style_pool_feature, style_dim)
 
         # content encoder
-        n_downsample = 4
+        # n_downsample = 4
         input_dim = 3#18
         dim = 32
         # Foe dimension
         self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
 
         num_layers = n_downsample + 1
-        network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
+        network_capacity = 16 # fpmax = 512 so the max filter size is clipped to 512
         # #Things to control: Above + noise vector
 
         self.gen = Generator(num_layers, style_dim, network_capacity = network_capacity)
@@ -86,6 +89,70 @@ class StyleGan2Gen(nn.Module):
         # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
+
+
+
+class StyleGan2Gen1(nn.Module):
+    # AdaIN auto-encoder architecture
+    def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
+        super(StyleGan2Gen1, self).__init__()
+
+        n_downsample = 4
+
+        style_dim = 576
+        SP_input_nc = 24#8
+        input_dim = 3
+        self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+
+        # content encoder
+        # n_downsample = 4
+        input_dim = 3#18
+        dim = 32
+        # Foe dimension
+        self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+        self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
+
+        latent_dim = 256
+        num_layers = n_downsample + 1
+        network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
+        # #Things to control: Above + noise vector
+        self.mlp = MLP(style_dim, num_layers*latent_dim, mlp_dim, 3, norm='none', activ=activ)
+
+        self.gen = Generator(num_layers, latent_dim, network_capacity = network_capacity)
+        self.latent_dim = latent_dim
+
+
+    def forward(self, img_A, img_B, sem_B, noise):
+        # noise = image_noise(batch_size, image_size, device=self.rank)
+        # reconstruct an image
+        # print("Input ", torch.min(img_A), torch.max(img_A))
+        content = self.enc_content(img_A)
+        # print("Content  ", torch.min(content), torch.max(content))
+        # print("Content  ", content.shape)
+
+
+        style = self.enc_style(img_B, sem_B)
+        # print("Style1 ", torch.min(style), torch.max(style))
+        style = self.fc(style.view(style.size(0), -1))
+        # print("Style2 ", torch.min(style), torch.max(style))
+        style = torch.unsqueeze(style, 2)
+        style = torch.unsqueeze(style, 3)
+        # print("Style1 ", style.shape)
+        style = self.mlp(style)
+        style = style.view(style.size(0), -1, self.latent_dim)
+        images_recon = self.gen(content, style, noise)
+
+        # sem_B_shape = sem_B.shape
+        # sem_B = sem_B.contiguous().view(sem_B.shape[0], -1, sem_B.shape[-2], sem_B.shape[-1])
+        # style = self.enc_style1(sem_B)
+        # style = self.enc_style_pooling(style)
+        # # print("Noise ", noise.shape)        
+        # images_recon = self.gen(content, style.squeeze(), noise)
+        # # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
+        # # print("images_recon ", images_recon.shape, content.shape)
+        return images_recon
+
+
 
 
 # stylegan2 classes
@@ -302,8 +369,8 @@ class Generator(nn.Module):
             )
             self.blocks.append(block)
 
-    def forward(self, x, style, input_noise):
-        # batch_size = styles.shape[0]
+    def forward(self, x, styles, input_noise):
+        batch_size = styles.shape[0]
 
         # if self.no_const:
         #     avg_style = styles.mean(dim=1)[:, :, None, None]
@@ -312,11 +379,11 @@ class Generator(nn.Module):
         #     x = self.initial_block.expand(batch_size, -1, -1, -1)
 
         rgb = None
-        # styles = styles.transpose(0, 1)
+        styles = styles.transpose(0, 1)
         x = self.initial_conv(x)
 
         # print("input styles ", style.shape)
-        for block, attn in zip(self.blocks, self.attns):
+        for style, block, attn in zip(styles, self.blocks, self.attns):
             if exists(attn):
                 x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)
@@ -347,11 +414,15 @@ class DiscriminatorBlock(nn.Module):
             x = self.downsample(x)
         x = (x + res) * (1 / math.sqrt(2))
         return x
-class Discriminator(nn.Module):
-    def __init__(self, image_size, network_capacity = 16, fq_layers = [], fq_dict_size = 256, attn_layers = [], transparent = False, fmap_max = 512):
+class StyleDiscriminator(nn.Module):
+    def __init__(self, num_layers=4, network_capacity = 16, fq_layers = [], fq_dict_size = 256, attn_layers = [], transparent = False, fmap_max = 512):
         super().__init__()
-        num_layers = int(log2(image_size) - 1)
-        num_init_filters = 3 if not transparent else 4
+
+        num_layers = n_downsample + 1
+        network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
+ 
+        # num_layers = int(log2(image_size) - 1)
+        num_init_filters = 6 if not transparent else 8
 
         blocks = []
         filters = [num_init_filters] + [(network_capacity * 4) * (2 ** i) for i in range(num_layers + 1)]
@@ -386,8 +457,9 @@ class Discriminator(nn.Module):
         latent_dim = 2 * 2 * chan_last
 
         self.final_conv = nn.Conv2d(chan_last, chan_last, 3, padding=1)
-        self.flatten = Flatten()
-        self.to_logit = nn.Linear(latent_dim, 1)
+        self.sigmoid = nn.Sigmoid()
+        # self.flatten = Flatten()
+        # self.to_logit = nn.Linear(latent_dim, 1)
 
     def forward(self, x):
         b, *_ = x.shape
@@ -405,9 +477,10 @@ class Discriminator(nn.Module):
                 quantize_loss += loss
 
         x = self.final_conv(x)
-        x = self.flatten(x)
-        x = self.to_logit(x)
-        return x.squeeze(), quantize_loss
+        # x = self.flatten(x)
+        # x = self.to_logit(x)
+        x = self.sigmoid(x)
+        return x #.squeeze(), quantize_loss
 
 
 
@@ -428,6 +501,10 @@ class Blur(nn.Module):
         f = self.f
         f = f[None, None, :] * f [None, :, None]
         return filter2D(x, f, normalized=True)
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.reshape(x.shape[0], -1)
 
 def exists(val):
     return val is not None

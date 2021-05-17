@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 import sys
 from models.model_adgen import ADGen
-from models.stylegan2 import StyleGan2Gen
+from models.stylegan2 import StyleGan2Gen, StyleDiscriminator, StyleGan2Gen1
 from models.siren_film import SirenFilmGen, SirenFilmGen1
 
 
@@ -157,6 +157,12 @@ def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropo
         mlp_dim = 256
         print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
         netG = StyleGan2Gen(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+    elif which_model_netG == 'StyleGan2Gen1':
+        style_dim = 576 #512
+        n_res = 8
+        mlp_dim = 256
+        print("Input Config ", input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
+        netG = StyleGan2Gen1(input_nc, ngf, style_dim, n_downsampling, n_res, mlp_dim)
     elif which_model_netG == 'SirenFilmGen':
         style_dim = 576 #512
         n_res = 8
@@ -197,6 +203,8 @@ def define_D(input_nc, ndf, which_model_netD,
         netD = ResnetDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=n_layers_D,
                                    gpu_ids=[], padding_type='reflect', use_sigmoid=use_sigmoid,
                                    n_downsampling=n_downsampling)
+    elif which_model_netD == 'StyleDiscriminator':
+        netD = StyleDiscriminator()
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   which_model_netD)

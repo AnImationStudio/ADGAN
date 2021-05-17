@@ -121,11 +121,11 @@ class SirenFilmGen1(nn.Module):
         input_dim = 3
         SP_input_nc = 24
 
-        style_dim = SP_input_nc#288#576 #512
+        style_dim = 24*SP_input_nc#288#576 #512
         n_res = 8
         mlp_dim = 256
         n_mlp = 3#8
-        n_downsample = 2
+        n_downsample = 4
 
         # # style encoder
         self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)

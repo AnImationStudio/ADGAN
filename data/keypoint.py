@@ -110,12 +110,14 @@ class KeyDataset(BaseDataset):
             P2 = self.transform(P2_img)
         BP1 = self.transformBP(BP1)
         BP2 = self.transformBP(BP2)
-        if(self.which_model_netG == 'StyleGan2Gen'):
+        if(self.which_model_netG == 'StyleGan2Gen' or 
+           self.which_model_netG == 'StyleGan2Gen1'):
             Noise = torch.zeros((P1.shape[2], P1.shape[1], 1), dtype=torch.float32)
+            Noise.data.uniform_(0, 1.0)
         elif(self.which_model_netG == 'SirenFilmGen'):
             style_dim = 32
             Noise = torch.zeros(32)
-            Noise.data.normal_(0, std=0.2)
+            Noise.data.uniform_(0, 1.0)
         else:
             Noise = np.zeros((1, 1, 1), dtype='float32')
 
@@ -125,7 +127,9 @@ class KeyDataset(BaseDataset):
 
         # segmentation
         # print("which_model_netG ", self.which_model_netG)
-        if(self.which_model_netG == 'SirenFilmGen1'):
+        if(self.which_model_netG == 'SirenFilmGen1' or
+           self.which_model_netG == 'StyleGan2Gen' or
+           self.which_model_netG == 'StyleGan2Gen1'):
 
             SP1 = np.load(SP1_path)['arr_0']
             SP1 = torch.from_numpy(SP1).float()        

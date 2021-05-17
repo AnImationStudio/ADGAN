@@ -65,6 +65,7 @@ class BaseModel(nn.Module):
             if key.endswith(('running_mean', 'running_var')):
                 del model_dict[key]
         ### Next cell
+        # print("The dictionary ", model_dict)
         network.load_state_dict(model_dict, False)
 
     def load_VGG(self, network):

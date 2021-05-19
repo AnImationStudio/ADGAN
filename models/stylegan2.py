@@ -43,7 +43,7 @@ import torchvision.models.vgg as models
 
 
 
-n_downsample = 4
+# n_downsample = 4
 class StyleGan2Gen(nn.Module):
     # AdaIN auto-encoder architecture
     def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
@@ -89,8 +89,6 @@ class StyleGan2Gen(nn.Module):
         # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
         # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
-
-
 
 class StyleGan2Gen1(nn.Module):
     # AdaIN auto-encoder architecture
@@ -152,6 +150,105 @@ class StyleGan2Gen1(nn.Module):
         # # print("images_recon ", images_recon.shape, content.shape)
         return images_recon
 
+
+class StyleGan2Gen2(nn.Module):
+    # AdaIN auto-encoder architecture
+    def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
+        super(StyleGan2Gen2, self).__init__()
+
+        n_downsample = 4
+
+        style_dim = 192
+        SP_input_nc = 24#8
+        input_dim = 3
+        self.enc_style = VggStyleEncoder(3, input_dim, dim, int(style_dim/SP_input_nc), norm='none', activ=activ, pad_type=pad_type)
+
+        # content encoder
+        # n_downsample = 4
+        input_dim = 3#18
+        dim = 32
+        # Foe dimension
+        self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+        self.fc = LinearBlock(style_dim, style_dim, norm='none', activation=activ)
+
+        latent_dim = 256
+        num_layers = n_downsample + 1
+        network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
+        # #Things to control: Above + noise vector
+        self.mlp = MLP(style_dim, num_layers*latent_dim, mlp_dim, 3, norm='none', activ=activ)
+
+        self.gen = Generator(num_layers, latent_dim, network_capacity = network_capacity)
+        self.latent_dim = latent_dim
+
+
+    def forward(self, img_A, img_B, sem_B, noise):
+        # noise = image_noise(batch_size, image_size, device=self.rank)
+        # reconstruct an image
+        # print("Input ", torch.min(img_A), torch.max(img_A))
+        content = self.enc_content(img_A)
+        # print("Content  ", torch.min(content), torch.max(content))
+        # print("Content  ", content.shape)
+
+
+        style = self.enc_style(img_B, sem_B)
+        # print("Style1 ", torch.min(style), torch.max(style))
+        style = self.fc(style.view(style.size(0), -1))
+        # print("Style2 ", torch.min(style), torch.max(style))
+        style = torch.unsqueeze(style, 2)
+        style = torch.unsqueeze(style, 3)
+        # print("Style1 ", style.shape)
+        style = self.mlp(style)
+        style = style.view(style.size(0), -1, self.latent_dim)
+        images_recon = self.gen(content, style, noise)
+
+        return images_recon
+
+
+class StyleGan2Gen3(nn.Module):
+    # AdaIN auto-encoder architecture
+    def __init__(self, input_dim, dim, style_dim, n_downsample, n_res, mlp_dim, activ='relu', pad_type='reflect'):
+        super(StyleGan2Gen, self).__init__()
+
+        style_downsample = 4
+        style_dim = 2048
+        SP_input_nc = 24#8
+        input_dim = 3
+        style_pool_feature = dim*(2**style_downsample)
+        self.enc_style = VGGStyleEnc()
+        self.enc_style1 = DownSampleEnc(style_downsample, input_dim*SP_input_nc, dim, 'in', activ, pad_type=pad_type)
+        self.enc_style_pooling = PoolingModule(style_pool_feature, style_dim)
+
+        # content encoder
+        # n_downsample = 4
+        input_dim = 3#18
+        dim = 32
+        # Foe dimension
+        self.enc_content = DownSampleEnc(n_downsample, input_dim, dim, 'in', activ, pad_type=pad_type)
+
+        num_layers = n_downsample + 1
+        network_capacity = 16 # fpmax = 512 so the max filter size is clipped to 512
+        # #Things to control: Above + noise vector
+
+        self.gen = Generator(num_layers, style_dim, network_capacity = network_capacity)
+
+
+    def forward(self, img_A, img_B, sem_B, noise):
+        # noise = image_noise(batch_size, image_size, device=self.rank)
+        # reconstruct an image
+        # print("Input ", torch.min(img_A), torch.max(img_A))
+        content = self.enc_content(img_A)
+        # print("Content  ", torch.min(content), torch.max(content))
+        # print("Content  ", content.shape)
+
+        sem_B_shape = sem_B.shape
+        sem_B = sem_B.contiguous().view(sem_B.shape[0], -1, sem_B.shape[-2], sem_B.shape[-1])
+        style = self.enc_style1(sem_B)
+        style = self.enc_style_pooling(style)
+        # print("Noise ", noise.shape)        
+        images_recon = self.gen(content, style.squeeze(), noise)
+        # print("image_recon ", torch.min(images_recon), torch.max(images_recon))
+        # print("images_recon ", images_recon.shape, content.shape)
+        return images_recon
 
 
 
@@ -370,7 +467,7 @@ class Generator(nn.Module):
             self.blocks.append(block)
 
     def forward(self, x, styles, input_noise):
-        batch_size = styles.shape[0]
+        # batch_size = style.shape[0]
 
         # if self.no_const:
         #     avg_style = styles.mean(dim=1)[:, :, None, None]
@@ -382,12 +479,13 @@ class Generator(nn.Module):
         styles = styles.transpose(0, 1)
         x = self.initial_conv(x)
 
-        # print("input styles ", style.shape)
+        # print("input styles ", styles.shape, x.shape)
         for style, block, attn in zip(styles, self.blocks, self.attns):
             if exists(attn):
                 x = attn(x)
             x, rgb = block(x, rgb, style, input_noise)
         rgb = nn.functional.tanh(rgb)
+        # print("rgb ", rgb.shape)
         return rgb
 
 class DiscriminatorBlock(nn.Module):
@@ -418,6 +516,7 @@ class StyleDiscriminator(nn.Module):
     def __init__(self, num_layers=4, network_capacity = 16, fq_layers = [], fq_dict_size = 256, attn_layers = [], transparent = False, fmap_max = 512):
         super().__init__()
 
+        n_downsample = 4
         num_layers = n_downsample + 1
         network_capacity = 16*2 # fpmax = 512 so the max filter size is clipped to 512
  

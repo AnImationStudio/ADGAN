@@ -39,8 +39,29 @@ class KeyDataset(BaseDataset):
 
         print('Loading data pairs finished ...')
 
-    def __getitem__(self, index):
+    def get_avail_file(self, P1_name, P2_name):
+        P1_name = P1_name[:-4]
+        P2_name = P2_name[:-4]
+        new_tags = ['1front', '2side', '3back', '4full', '7additional', '6flat']
+        tag1 = P1_name.split("_")[-1]
+        tag2 = P2_name.split("_")[-1]
+        # print("List of tags ", tag1, tag2, P1_name)
+        new_tags.remove(tag1)
+        new_tags.remove(tag2)
+        # tag3 = new_tags[random.randint(0, len(new_tags))]
+        for tag in new_tags:
+            filename = P1_name.split("_")[:-1]
+            filename.append(tag)
+            # print("Tags ", tag3, tag2, tag1, filename)
+            filename = "_".join(filename)
+            filename = os.path.join(self.dir_TEX, filename.split("/")[-1])
+            # print("filename ", filename)
+            if(os.path.exists(filename+".png")):
+                return filename
 
+        return None
+
+    def __getitem__(self, index):
 
         while(True):
             if self.opt.phase == 'train':
@@ -56,7 +77,9 @@ class KeyDataset(BaseDataset):
             BP2_path = os.path.join(self.dir_DP, P2_name[:-4] + '.npz') # bone of person 2
             # BP2_path = os.path.join(self.dir_K, P2_name + '.npy') # bone of person 2
 
-            SP1_path = os.path.join(self.dir_TEX, P2_name[:-4] + '.npz')
+            SP1_path = os.path.join(self.dir_TEX, P1_name[:-4] + '.npz')
+
+            # SP3_path = self.get_avail_file(P1_path, P2_path)
 
             if(os.path.exists(BP1_path) and os.path.exists(BP2_path)):
                 break
@@ -69,6 +92,10 @@ class KeyDataset(BaseDataset):
         BP2_img = np.load(BP2_path)['arr_0'] 
         # BP1_img = np.load(BP1_path) # h, w, c
         # BP2_img = np.load(BP2_path)
+
+        # SP1_img = Image.open(SP1_path[:-4] + ".png").convert('RGB')
+        # SP3_img = Image.open(SP3_path + ".png").convert('RGB')
+        # print("Texture image ", SP1_img.size, SP3_img.size)
 
         # use flip
         if self.opt.phase == 'train' and self.opt.use_flip:
@@ -111,7 +138,8 @@ class KeyDataset(BaseDataset):
         BP1 = self.transformBP(BP1)
         BP2 = self.transformBP(BP2)
         if(self.which_model_netG == 'StyleGan2Gen' or 
-           self.which_model_netG == 'StyleGan2Gen1'):
+           self.which_model_netG == 'StyleGan2Gen1' or 
+           self.which_model_netG == 'StyleGan2Gen2'):
             Noise = torch.zeros((P1.shape[2], P1.shape[1], 1), dtype=torch.float32)
             Noise.data.uniform_(0, 1.0)
         elif(self.which_model_netG == 'SirenFilmGen'):
@@ -129,7 +157,8 @@ class KeyDataset(BaseDataset):
         # print("which_model_netG ", self.which_model_netG)
         if(self.which_model_netG == 'SirenFilmGen1' or
            self.which_model_netG == 'StyleGan2Gen' or
-           self.which_model_netG == 'StyleGan2Gen1'):
+           self.which_model_netG == 'StyleGan2Gen1' or 
+           self.which_model_netG == 'StyleGan2Gen2'):
 
             SP1 = np.load(SP1_path)['arr_0']
             SP1 = torch.from_numpy(SP1).float()        
@@ -153,7 +182,7 @@ class KeyDataset(BaseDataset):
         
 
         # print("Input dimensions ", P1.shape, P2.shape, BP1.shape, BP2.shape,
-        #     SP1.shape, Noise)
+        #     SP1.shape, Noise.shape)
         # print("Noise ", Noise)
         # print("Data Min Max ", torch.amin(P1, dim=(1,2)), torch.amax(P1, dim=(1,2)),
         #     torch.amin(BP1, dim=(1,2)), torch.amax(BP1, dim=(1,2)),
